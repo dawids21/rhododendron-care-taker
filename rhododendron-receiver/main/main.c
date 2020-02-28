@@ -11,12 +11,13 @@
 
 #include "wifi.h"
 #include "mqtt.h"
-#include "app_event_group.h"
+#include "global.h"
 
 void led_task(void* data);
 
 EventGroupHandle_t app_event_group;
 static const char* LED_TAG = "LED";
+TaskHandle_t led_task_handle; 
 
 void app_main()
 {
@@ -29,33 +30,28 @@ void app_main()
     ESP_ERROR_CHECK(ret);
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     app_event_group = xEventGroupCreate();
+	xTaskCreate(led_task, "LED task", 2048, NULL, 1, &led_task_handle);
     wifi_init_sta();
     mqtt_app_init();
-	xTaskCreate(led_task, "LED task", 2048, NULL, 1, NULL);
 }
 
 void led_task(void* data)
 {
+	uint32_t notification_value = 0;
 	while (true)
 	{
-		if (xEventGroupWaitBits(app_event_group, 
-								LED_CHANGE_BIT,
-								pdTRUE,
-								pdTRUE,
-								portMAX_DELAY))
+		if (xTaskNotifyWait(pdFALSE, pdFALSE, &notification_value, portMAX_DELAY) == pdTRUE)
 		{
-			EventBits_t bits = xEventGroupGetBits(app_event_group);
-			if (bits & (WIFI_CONNECTED_BIT|MQTT_CONNECTED_BIT))
+			if (notification_value == 1)
 			{
-				ESP_LOGI(LED_TAG, "LED turned off");
-				//TODO turn led off
+				ESP_LOGI(LED_TAG, "Turned the led on");
+				//TODO turn led on
 			}
 			else
 			{
-				ESP_LOGI(LED_TAG, "LED turned on");
+				ESP_LOGI(LED_TAG, "Turned the led off");
 				//TODO turn led on
 			}
 		}
-		
 	}
 }

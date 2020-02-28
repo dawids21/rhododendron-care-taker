@@ -2,7 +2,7 @@
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
-#include "app_event_group.h"
+#include "global.h"
 
 static const char *TAG = "wifi station";
 
@@ -83,7 +83,6 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     } 
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
     {
-        xEventGroupSetBits(app_event_group, WIFI_DICONNECTED_BIT|LED_CHANGE_BIT);
         xEventGroupClearBits(app_event_group, WIFI_CONNECTED_BIT);
         if (s_retry_num < ESP_MAXIMUM_RETRY) 
         {
@@ -94,7 +93,6 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         else 
         {
             xEventGroupSetBits(app_event_group, WIFI_FAIL_BIT);
-            xEventGroupClearBits(app_event_group, WIFI_DICONNECTED_BIT);
         }
         ESP_LOGI(TAG,"connect to the AP fail");
     } 
@@ -104,7 +102,6 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         ESP_LOGI(TAG, "got ip:%s",
                  ip4addr_ntoa(&event->ip_info.ip));
         s_retry_num = 0;
-        xEventGroupSetBits(app_event_group, WIFI_CONNECTED_BIT|LED_CHANGE_BIT);
-        xEventGroupClearBits(app_event_group, WIFI_FAIL_BIT|WIFI_DICONNECTED_BIT);
+        xEventGroupSetBits(app_event_group, WIFI_CONNECTED_BIT);
     }
 }

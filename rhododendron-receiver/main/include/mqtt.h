@@ -6,7 +6,7 @@
 typedef struct s_mqtt_msg_t {
     char topic[60];
     char payload[100];
-} *mqtt_msg_t;
+} mqtt_msg_t;
 
 
 void mqtt_app_init(void);
