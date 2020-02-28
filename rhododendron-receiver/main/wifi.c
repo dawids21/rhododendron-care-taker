@@ -3,7 +3,6 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "freertos/event_groups.h"
-#include "mqtt.h"
 
 static const char *TAG = "wifi station";
 
@@ -23,7 +22,7 @@ static int s_retry_num = 0;
 
 void wifi_init_sta(void)
 {
-    xTaskCreate(wifi_init_task, "WiFi Init", 2048, NULL, 6, NULL);
+    xTaskCreate(wifi_init_task, "WiFi Init", 4096, NULL, 6, NULL);
 }
 
 static void wifi_init_task(void* data)
@@ -34,8 +33,6 @@ static void wifi_init_task(void* data)
         s_wifi_event_group = xEventGroupCreate();
 
         tcpip_adapter_init();
-
-        ESP_ERROR_CHECK(esp_event_loop_create_default());
 
         wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
         ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -67,9 +64,8 @@ static void wifi_init_task(void* data)
         * happened. */
         if (bits & WIFI_CONNECTED_BIT)
         {
-            ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
-                    ESP_WIFI_SSID, ESP_WIFI_PASS);
-            mqtt_task_notify();
+            ESP_LOGI(TAG, "connected to ap SSID:%s",
+                        ESP_WIFI_SSID);
         }
         else if (bits & WIFI_FAIL_BIT) {
             ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",

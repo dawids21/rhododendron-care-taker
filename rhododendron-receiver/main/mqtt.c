@@ -20,38 +20,34 @@ static esp_mqtt_client_handle_t client;
 static TaskHandle_t mqtt_init;
 static QueueHandle_t mqtt_queue;
 
-void mqtt_app_start(void)
+void mqtt_app_init(void)
 {
     ESP_LOGI(TAG, "Creating app init task");
     xTaskCreate(mqtt_init_task, "MQTT Init Task", 2048, NULL, 5, &mqtt_init);
+}
+
+void mqtt_app_start(void)
+{
+    ESP_LOGI(TAG, "Start MQTT client");
+    esp_mqtt_client_start(client);
 }
 
 static void mqtt_init_task(void* data)
 {
     while (true)
     {
-        if (xTaskNotifyWait(0, 0, 0, portMAX_DELAY) == pdPASS)
+        esp_mqtt_client_config_t mqtt_cfg = 
         {
-            esp_mqtt_client_config_t mqtt_cfg = 
-            {
-                .host = BROKER_HOST,
-                .port = BROKER_PORT,
-                .username = BROKER_USERNAME,
-                .password = BROKER_PASSWORD
-            };
-            client = esp_mqtt_client_init(&mqtt_cfg);
-            esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler_cb, NULL);
-            mqtt_queue = xQueueCreate(10, sizeof(mqtt_msg_t));
-            esp_mqtt_client_start(client);
-            vTaskDelete(NULL);
-        }
+            .host = BROKER_HOST,
+            .port = BROKER_PORT,
+            .username = BROKER_USERNAME,
+            .password = BROKER_PASSWORD
+        };
+        client = esp_mqtt_client_init(&mqtt_cfg);
+        esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler_cb, NULL);
+        mqtt_queue = xQueueCreate(10, sizeof(mqtt_msg_t));
+        vTaskDelete(NULL);
     }
-}
-
-void mqtt_task_notify()
-{
-    ESP_LOGI(TAG, "Get notify from WiFi to MQTT init");
-    xTaskNotify(mqtt_init, 0, eNoAction);
 }
 
 void add_mqtt_msg(mqtt_msg_t msg)
