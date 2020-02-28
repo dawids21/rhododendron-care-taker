@@ -8,7 +8,8 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
-#include "include/wifi.h"
+#include "wifi.h"
+#include "mqtt.h"
 
 void app_main()
 {
@@ -20,4 +21,5 @@ void app_main()
     }
     ESP_ERROR_CHECK(ret);
     wifi_init_sta();
+    mqtt_app_start();
 }
