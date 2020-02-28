@@ -3,11 +3,13 @@
 #include "esp_log.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "app_event_group.h"
 
 #define BROKER_HOST "192.168.8.5"
 #define BROKER_PORT 1883
 #define BROKER_USERNAME "***REMOVED***"
 #define BROKER_PASSWORD "***REMOVED***"
+#define MQTT_CONNECTED BIT0
 
 static void mqtt_init_task(void* data);
 static void mqtt_event_handler_cb(  void *handler_args, 
@@ -26,12 +28,6 @@ void mqtt_app_init(void)
     xTaskCreate(mqtt_init_task, "MQTT Init Task", 2048, NULL, 5, &mqtt_init);
 }
 
-void mqtt_app_start(void)
-{
-    ESP_LOGI(TAG, "Start MQTT client");
-    esp_mqtt_client_start(client);
-}
-
 static void mqtt_init_task(void* data)
 {
     while (true)
@@ -46,12 +42,16 @@ static void mqtt_init_task(void* data)
         client = esp_mqtt_client_init(&mqtt_cfg);
         esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler_cb, NULL);
         mqtt_queue = xQueueCreate(10, sizeof(mqtt_msg_t));
+        xEventGroupWaitBits(app_event_group, WIFI_CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
+        ESP_LOGI(TAG, "Start MQTT client");
+        esp_mqtt_client_start(client);
         vTaskDelete(NULL);
     }
 }
 
 void add_mqtt_msg(mqtt_msg_t msg)
 {
+    xEventGroupWaitBits(app_event_group, MQTT_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
     ESP_LOGI(TAG, "Get data to MQTT queue");
     xQueueSend(mqtt_queue, msg, 0);
 }
@@ -68,9 +68,11 @@ static void mqtt_event_handler_cb(  void *handler_args,
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+            xEventGroupSetBits(app_event_group, MQTT_CONNECTED);
             break;
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
+            xEventGroupClearBits(app_event_group, MQTT_CONNECTED);
             break;
 
         case MQTT_EVENT_SUBSCRIBED:
