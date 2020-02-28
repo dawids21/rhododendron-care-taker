@@ -9,7 +9,6 @@
 #define BROKER_PORT 1883
 #define BROKER_USERNAME "***REMOVED***"
 #define BROKER_PASSWORD "***REMOVED***"
-#define MQTT_CONNECTED BIT0
 
 static void mqtt_init_task(void* data);
 static void mqtt_event_handler_cb(  void *handler_args, 
@@ -25,7 +24,7 @@ static QueueHandle_t mqtt_queue;
 void mqtt_app_init(void)
 {
     ESP_LOGI(TAG, "Creating app init task");
-    xTaskCreate(mqtt_init_task, "MQTT Init Task", 2048, NULL, 5, &mqtt_init);
+    xTaskCreate(mqtt_init_task, "MQTT Init Task", 2048, NULL, 1, &mqtt_init);
 }
 
 static void mqtt_init_task(void* data)
@@ -51,7 +50,7 @@ static void mqtt_init_task(void* data)
 
 void add_mqtt_msg(mqtt_msg_t msg)
 {
-    xEventGroupWaitBits(app_event_group, MQTT_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
+    xEventGroupWaitBits(app_event_group, MQTT_CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
     ESP_LOGI(TAG, "Get data to MQTT queue");
     xQueueSend(mqtt_queue, msg, 0);
 }
@@ -68,11 +67,13 @@ static void mqtt_event_handler_cb(  void *handler_args,
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-            xEventGroupSetBits(app_event_group, MQTT_CONNECTED);
+            xEventGroupSetBits(app_event_group, MQTT_CONNECTED_BIT|LED_CHANGE_BIT);
+            xEventGroupClearBits(app_event_group, MQTT_DISCONNECTED_BIT);
             break;
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
-            xEventGroupClearBits(app_event_group, MQTT_CONNECTED);
+            xEventGroupSetBits(app_event_group, MQTT_DISCONNECTED_BIT|LED_CHANGE_BIT);
+            xEventGroupClearBits(app_event_group, MQTT_CONNECTED_BIT);
             break;
 
         case MQTT_EVENT_SUBSCRIBED:

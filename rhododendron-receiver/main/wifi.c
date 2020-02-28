@@ -18,7 +18,7 @@ static int s_retry_num = 0;
 
 void wifi_init_sta(void)
 {
-    xTaskCreate(wifi_init_task, "WiFi Init", 4096, NULL, 6, NULL);
+    xTaskCreate(wifi_init_task, "WiFi Init", 4096, NULL, 1, NULL);
 }
 
 static void wifi_init_task(void* data)
@@ -83,6 +83,8 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     } 
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
     {
+        xEventGroupSetBits(app_event_group, WIFI_DICONNECTED_BIT|LED_CHANGE_BIT);
+        xEventGroupClearBits(app_event_group, WIFI_CONNECTED_BIT);
         if (s_retry_num < ESP_MAXIMUM_RETRY) 
         {
             esp_wifi_connect();
@@ -92,6 +94,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         else 
         {
             xEventGroupSetBits(app_event_group, WIFI_FAIL_BIT);
+            xEventGroupClearBits(app_event_group, WIFI_DICONNECTED_BIT);
         }
         ESP_LOGI(TAG,"connect to the AP fail");
     } 
@@ -101,6 +104,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         ESP_LOGI(TAG, "got ip:%s",
                  ip4addr_ntoa(&event->ip_info.ip));
         s_retry_num = 0;
-        xEventGroupSetBits(app_event_group, WIFI_CONNECTED_BIT);
+        xEventGroupSetBits(app_event_group, WIFI_CONNECTED_BIT|LED_CHANGE_BIT);
+        xEventGroupClearBits(app_event_group, WIFI_FAIL_BIT|WIFI_DICONNECTED_BIT);
     }
 }

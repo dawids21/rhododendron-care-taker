@@ -5,16 +5,18 @@
 #include "esp_system.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
-#include "esp_event.h"
-#include "mqtt_client.h"
 
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
 #include "wifi.h"
 #include "mqtt.h"
+#include "app_event_group.h"
+
+void led_task(void* data);
 
 EventGroupHandle_t app_event_group;
+static const char* LED_TAG = "LED";
 
 void app_main()
 {
@@ -29,4 +31,31 @@ void app_main()
     app_event_group = xEventGroupCreate();
     wifi_init_sta();
     mqtt_app_init();
+	xTaskCreate(led_task, "LED task", 2048, NULL, 1, NULL);
+}
+
+void led_task(void* data)
+{
+	while (true)
+	{
+		if (xEventGroupWaitBits(app_event_group, 
+								LED_CHANGE_BIT,
+								pdTRUE,
+								pdTRUE,
+								portMAX_DELAY))
+		{
+			EventBits_t bits = xEventGroupGetBits(app_event_group);
+			if (bits & (WIFI_CONNECTED_BIT|MQTT_CONNECTED_BIT))
+			{
+				ESP_LOGI(LED_TAG, "LED turned off");
+				//TODO turn led off
+			}
+			else
+			{
+				ESP_LOGI(LED_TAG, "LED turned on");
+				//TODO turn led on
+			}
+		}
+		
+	}
 }
