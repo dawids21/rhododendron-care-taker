@@ -9,8 +9,8 @@ typedef struct s_mqtt_msg_t {
 } mqtt_msg_t;
 
 
-void mqtt_app_init(void);
 void mqtt_app_start(void);
 void add_mqtt_msg(mqtt_msg_t msg);
+void mqtt_notify(void);
 
 #endif

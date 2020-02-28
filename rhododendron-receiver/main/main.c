@@ -15,7 +15,8 @@
 
 void led_task(void* data);
 
-EventGroupHandle_t app_event_group;
+EventGroupHandle_t mqtt_state_machine;
+EventGroupHandle_t wifi_state_machine;
 static const char* LED_TAG = "LED";
 
 TaskHandle_t led_task_handle; 
@@ -30,10 +31,11 @@ void app_main()
     }
     ESP_ERROR_CHECK(ret);
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    app_event_group = xEventGroupCreate();
+    mqtt_state_machine = xEventGroupCreate();
+	wifi_state_machine = xEventGroupCreate();
 	wifi_start();
 	xTaskCreate(led_task, "LED task", 2048, NULL, 1, &led_task_handle);
-    mqtt_app_init();
+    mqtt_app_start();
 	wifi_notify();
 }
 
