@@ -56,36 +56,44 @@ void wifi_init_sta()
 
     /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
      * happened. */
-    if (bits & WIFI_CONNECTED_BIT) {
+    if (bits & WIFI_CONNECTED_BIT)
+    {
         ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
                  ESP_WIFI_SSID, ESP_WIFI_PASS);
-    } else if (bits & WIFI_FAIL_BIT) {
+    }
+    else if (bits & WIFI_FAIL_BIT) {
         ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
                  ESP_WIFI_SSID, ESP_WIFI_PASS);
-    } else {
+    }
+    else
+    {
         ESP_LOGE(TAG, "UNEXPECTED EVENT");
     }
-
-    ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler));
-    ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler));
-    vEventGroupDelete(s_wifi_event_group);
 }
 
 static void event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
 {
-    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) 
+    {
         esp_wifi_connect();
-    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        if (s_retry_num < ESP_MAXIMUM_RETRY) {
+    } 
+    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
+    {
+        if (s_retry_num < ESP_MAXIMUM_RETRY) 
+        {
             esp_wifi_connect();
             s_retry_num++;
             ESP_LOGI(TAG, "retry to connect to the AP");
-        } else {
+        } 
+        else 
+        {
             xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
         }
         ESP_LOGI(TAG,"connect to the AP fail");
-    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+    } 
+    else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) 
+    {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "got ip:%s",
                  ip4addr_ntoa(&event->ip_info.ip));
