@@ -69,6 +69,30 @@ static void mqtt_task(void* data)
             {
                 xTaskCreate(mqtt_publish_task, "MQTT Publish task", 2048,
                             NULL, 1, &mqtt_publish_task_handle);
+                xTaskNotify(led_task_handle, 0, eNoAction);
+            }
+            else if (wifi_state == WIFI_DISCONNECTED && mqtt_state == MQTT_CONNECTED)
+            {
+                ESP_LOGE(TAG, "No WiFi, stopping MQTT");
+                esp_mqtt_client_stop(client);
+                xEventGroupClearBits(mqtt_state_machine, MQTT_ALL_BITS);
+                xEventGroupSetBits(mqtt_state_machine, MQTT_STOPPED);
+                xTaskNotify(led_task_handle, 0, eNoAction);
+            }
+            else if (wifi_state == WIFI_CONNECTED && mqtt_state == MQTT_STOPPED)
+            {
+                ESP_LOGI(TAG, "WIFI reconnected, restoring MQTT");
+                esp_mqtt_client_start(client);
+                esp_mqtt_client_reconnect(client);
+                xEventGroupClearBits(mqtt_state_machine, MQTT_ALL_BITS);
+                xEventGroupSetBits(mqtt_state_machine, MQTT_RECONNECTING);
+            }
+            else if (wifi_state == WIFI_CONNECTED && mqtt_state == MQTT_RECONNECTED)
+            {
+                ESP_LOGI(TAG, "MQTT reconnected");
+                xTaskNotify(led_task_handle, 1, eNoAction);
+                xEventGroupClearBits(mqtt_state_machine, MQTT_ALL_BITS);
+                xEventGroupSetBits(mqtt_state_machine, MQTT_CONNECTED);
             }
         }
     }
@@ -86,6 +110,7 @@ static void mqtt_init(void)
     client = esp_mqtt_client_init(&mqtt_cfg);
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler_cb, NULL);
     mqtt_queue = xQueueCreate(10, sizeof(mqtt_msg_t));
+    xEventGroupClearBits(mqtt_state_machine, MQTT_ALL_BITS);
     xEventGroupSetBits(mqtt_state_machine, MQTT_INITIATED);
     mqtt_notify();
 }
@@ -117,7 +142,18 @@ static void mqtt_event_handler_cb(  void *handler_args,
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-            xEventGroupSetBits(mqtt_state_machine, MQTT_CONNECTED);
+            EventBits_t bits = xEventGroupWaitBits(mqtt_state_machine, MQTT_INITIATED|MQTT_RECONNECTING,
+                                                    pdFALSE, pdFALSE, portMAX_DELAY);
+            xEventGroupClearBits(mqtt_state_machine, MQTT_ALL_BITS);
+            if (bits == MQTT_INITIATED)
+            {
+                xEventGroupSetBits(mqtt_state_machine, MQTT_CONNECTED);
+            }
+            else if (bits == MQTT_RECONNECTING)
+            {
+                xEventGroupSetBits(mqtt_state_machine, MQTT_RECONNECTED);
+            }
+            mqtt_notify();
             break;
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
