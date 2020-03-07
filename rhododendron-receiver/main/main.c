@@ -11,6 +11,7 @@
 
 #include "wifi.h"
 #include "mqtt.h"
+#include "ble.h"
 #include "global.h"
 
 void led_task(void* data);
@@ -33,10 +34,11 @@ void app_main()
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     mqtt_state_machine = xEventGroupCreate();
 	wifi_state_machine = xEventGroupCreate();
-	wifi_start();
-	xTaskCreate(led_task, "LED task", 2048, NULL, 1, &led_task_handle);
-    mqtt_app_start();
-	wifi_notify();
+	//wifi_start();
+	//xTaskCreate(led_task, "LED task", 2048, NULL, 1, &led_task_handle);
+    //mqtt_app_start();
+	ble_init();
+	//wifi_notify();
 }
 
 void led_task(void* data)
