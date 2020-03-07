@@ -34,7 +34,6 @@
 #define REMOTE_SERVICE_UUID   0xFFE0
 #define REMOTE_CHAR_UUID    0xFFE1
 
-static esp_gattc_char_elem_t *char_elem_result   = NULL;
 static esp_gattc_descr_elem_t *descr_elem_result = NULL;
 
 ///Declare static functions
@@ -187,37 +186,10 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
         }
         ESP_LOGI(GATTC_TAG, "Scan start success");
         break;
-    case ESP_GAP_BLE_PASSKEY_REQ_EVT:                           /* passkey request event */
-        /* Call the following function to input the passkey which is displayed on the remote device */
-        //esp_ble_passkey_reply(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, true, 0x00);
-        ESP_LOGI(GATTC_TAG, "ESP_GAP_BLE_PASSKEY_REQ_EVT");
-        break;
-    case ESP_GAP_BLE_OOB_REQ_EVT: {
-        ESP_LOGI(GATTC_TAG, "ESP_GAP_BLE_OOB_REQ_EVT");
-        uint8_t tk[16] = {1}; //If you paired with OOB, both devices need to use the same tk
-        esp_ble_oob_req_reply(param->ble_security.ble_req.bd_addr, tk, sizeof(tk));
-        break;
-    }
-    case ESP_GAP_BLE_LOCAL_IR_EVT:                               /* BLE local IR event */
-        ESP_LOGI(GATTC_TAG, "ESP_GAP_BLE_LOCAL_IR_EVT");
-        break;
-    case ESP_GAP_BLE_LOCAL_ER_EVT:                               /* BLE local ER event */
-        ESP_LOGI(GATTC_TAG, "ESP_GAP_BLE_LOCAL_ER_EVT");
-        break;
     case ESP_GAP_BLE_SEC_REQ_EVT:
         /* send the positive(true) security response to the peer device to accept the security request.
         If not accept the security request, should send the security response with negative(false) accept value*/
         esp_ble_gap_security_rsp(param->ble_security.ble_req.bd_addr, true);
-        break;
-    case ESP_GAP_BLE_NC_REQ_EVT:
-        /* The app will receive this evt when the IO has DisplayYesNO capability and the peer device IO also has DisplayYesNo capability.
-        show the passkey number to the user to confirm it with the number displayed by peer device. */
-        esp_ble_confirm_reply(param->ble_security.ble_req.bd_addr, true);
-        ESP_LOGI(GATTC_TAG, "ESP_GAP_BLE_NC_REQ_EVT, the passkey Notify number:%d", param->ble_security.key_notif.passkey);
-        break;
-    case ESP_GAP_BLE_PASSKEY_NOTIF_EVT:  ///the app will receive this evt when the IO  has Output capability and the peer device IO has Input capability.
-        ///show the passkey number to the user to input it in the peer device.
-        ESP_LOGI(GATTC_TAG, "The passkey Notify number:%06d", param->ble_security.key_notif.passkey);
         break;
     case ESP_GAP_BLE_KEY_EVT:
         //shows the ble key info share with peer device to the user.
@@ -348,53 +320,6 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
         } else {
             ESP_LOGI(GATTC_TAG, "unknown service source");
         }
-        if (get_service){
-            uint16_t count  = 0;
-            uint16_t offset = 0;
-            esp_gatt_status_t ret_status = esp_ble_gattc_get_attr_count(gattc_if,
-                                                                        gattc_profile.conn_id,
-                                                                        ESP_GATT_DB_CHARACTERISTIC,
-                                                                        gattc_profile.service_start_handle,
-                                                                        gattc_profile.service_end_handle,
-                                                                        INVALID_HANDLE,
-                                                                        &count);
-            if (ret_status != ESP_GATT_OK){
-                ESP_LOGE(GATTC_TAG, "esp_ble_gattc_get_attr_count error, %d", __LINE__);
-            }
-            if (count > 0){
-                char_elem_result = (esp_gattc_char_elem_t *)malloc(sizeof(esp_gattc_char_elem_t) * count);
-                if (!char_elem_result){
-                    ESP_LOGE(GATTC_TAG, "gattc no mem");
-                }else{
-                    ret_status = esp_ble_gattc_get_all_char(gattc_if,
-                                                            gattc_profile.conn_id,
-                                                            gattc_profile.service_start_handle,
-                                                            gattc_profile.service_end_handle,
-                                                            char_elem_result,
-                                                            &count,
-                                                            offset);
-                    if (ret_status != ESP_GATT_OK){
-                        ESP_LOGE(GATTC_TAG, "esp_ble_gattc_get_all_char error, %d", __LINE__);
-                    }
-                    if (count > 0){
-
-                        for (int i = 0; i < count; ++i)
-                        {
-                            if (char_elem_result[i].uuid.len == ESP_UUID_LEN_16 && char_elem_result[i].uuid.uuid.uuid16 == REMOTE_CHAR_UUID && (char_elem_result[i].properties & ESP_GATT_CHAR_PROP_BIT_NOTIFY))
-                            {
-                                gattc_profile.notify_char_handle = char_elem_result[i].char_handle;
-                                esp_ble_gattc_register_for_notify (gattc_if,
-                                                                   gattc_profile.remote_bda,
-                                                                   char_elem_result[i].char_handle);
-                                break;
-                            }
-                        }
-                    }
-                }
-                free(char_elem_result);
-            }
-        }
-
         break;
     case ESP_GATTC_REG_FOR_NOTIFY_EVT: {
         if (p_data->reg_for_notify.status != ESP_GATT_OK){
@@ -480,6 +405,8 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
         ESP_LOGI(GATTC_TAG, "ESP_GATTC_DISCONNECT_EVT, reason = 0x%x", p_data->disconnect.reason);
         connect = false;
         get_service = false;
+        esp_ble_gattc_open( gattc_profile.gattc_if, gattc_profile.remote_bda,
+                            BLE_ADDR_TYPE_PUBLIC, true);
         break;
     default:
         break;
