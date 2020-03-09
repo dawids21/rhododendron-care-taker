@@ -37,8 +37,19 @@ enum mqtt_states {
     MQTT_RECONNECTED = MQTT_INIT_BIT|MQTT_CONNECTED_BIT|MQTT_RECON_BIT,
 };
 
+#define BLE_INIT_BIT BIT0
+#define BLE_CONNECT_BIT BIT1
+#define BLE_ALL_BITS BLE_INIT_BIT | BLE_CONNECT_BIT
+
+enum ble_states {
+    BLE_NOT_INIT = 0,
+    BLE_INITIATED = BLE_INIT_BIT,
+    BLE_CONNECTED = BLE_INIT_BIT | BLE_CONNECT_BIT,
+};
+
 extern EventGroupHandle_t wifi_state_machine;
 extern EventGroupHandle_t mqtt_state_machine;
+extern EventGroupHandle_t ble_state_machine;
 extern TaskHandle_t led_task_handle;
 
 #endif

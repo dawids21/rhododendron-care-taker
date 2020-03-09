@@ -29,14 +29,20 @@
 #include "esp_gatt_common_api.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/event_groups.h"
+#include "global.h"
 
 #define GATTC_TAG             "SEC_GATTC"
 #define REMOTE_SERVICE_UUID   0xFFE0
 #define REMOTE_CHAR_UUID    0xFFE1
 
-static esp_gattc_descr_elem_t *descr_elem_result = NULL;
+static TaskHandle_t ble_task_handle;
 
 ///Declare static functions
+static void ble_init(void);
+static void ble_task(void* data);
+static void ble_task_notify(void);
 static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param);
 static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp_ble_gattc_cb_param_t *param);
 
@@ -45,8 +51,6 @@ static esp_bt_uuid_t remote_filter_service_uuid = {
     .uuid = {.uuid16 = REMOTE_SERVICE_UUID,},
 };
 
-static bool connect = false;
-static bool get_service = false;
 static const char remote_device_name[] = "HM10-A5CE";
 
 static esp_ble_scan_params_t ble_scan_params = {
@@ -154,6 +158,19 @@ static char *esp_auth_req_to_str(esp_ble_auth_req_t auth_req)
    return auth_str;
 }
 
+static bool first_connect = false;
+
+void ble_start(void)
+{
+    xTaskCreate(ble_task, "BLE Task", 4096, NULL, 1, &ble_task_handle);
+    ble_task_notify();
+}
+
+static void ble_task_notify(void)
+{
+    xTaskNotify(ble_task_handle, 0, eNoAction);
+}
+
 static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
     uint8_t *adv_name = NULL;
@@ -224,8 +241,8 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
             if (adv_name != NULL) {
                 if (strlen(remote_device_name) == adv_name_len && strncmp((char *)adv_name, remote_device_name, adv_name_len) == 0) {
                     ESP_LOGI(GATTC_TAG, "searched device %s\n", remote_device_name);
-                    if (connect == false) {
-                        connect = true;
+                    if (first_connect == false) {
+                        first_connect = true;
                         ESP_LOGI(GATTC_TAG, "connect to the remote device.");
                         esp_ble_gap_stop_scanning();
                         esp_ble_gattc_open(gattc_profile.gattc_if, scan_result->scan_rst.bda, scan_result->scan_rst.ble_addr_type, true);
@@ -301,10 +318,13 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
         ESP_LOGI(GATTC_TAG, "SEARCH RES: conn_id = %x is primary service %d", p_data->search_res.conn_id, p_data->search_res.is_primary);
         ESP_LOGI(GATTC_TAG, "start handle %d end handle %d current handle value %d", p_data->search_res.start_handle, p_data->search_res.end_handle, p_data->search_res.srvc_id.inst_id);
         if (p_data->search_res.srvc_id.uuid.len == ESP_UUID_LEN_16 && p_data->search_res.srvc_id.uuid.uuid.uuid16 == REMOTE_SERVICE_UUID) {
-            ESP_LOGI(GATTC_TAG, "UUID16: %x", p_data->search_res.srvc_id.uuid.uuid.uuid16);
-            get_service = true;
+            ESP_LOGI(GATTC_TAG, "UUID16: %x", p_data->search_res.srvc_id.uuid.uuid.uuid16);            
             gattc_profile.service_start_handle = p_data->search_res.start_handle;
             gattc_profile.service_end_handle = p_data->search_res.end_handle;
+            xEventGroupClearBits(ble_state_machine, BLE_ALL_BITS);
+            xEventGroupSetBits(ble_state_machine, BLE_INITIATED);
+            esp_ble_gattc_close(gattc_profile.gattc_if, gattc_profile.conn_id);
+            ble_task_notify();
         }
         break;
     }
@@ -320,72 +340,6 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
         } else {
             ESP_LOGI(GATTC_TAG, "unknown service source");
         }
-        break;
-    case ESP_GATTC_REG_FOR_NOTIFY_EVT: {
-        if (p_data->reg_for_notify.status != ESP_GATT_OK){
-            ESP_LOGE(GATTC_TAG, "reg for notify failed, error status = %x", p_data->reg_for_notify.status);
-            break;
-        }
-
-            uint16_t count = 0;
-            uint16_t offset = 0;
-            uint16_t notify_en = 1;
-            esp_gatt_status_t ret_status = esp_ble_gattc_get_attr_count(gattc_if,
-                                                                        gattc_profile.conn_id,
-                                                                        ESP_GATT_DB_DESCRIPTOR,
-                                                                        gattc_profile.service_start_handle,
-                                                                        gattc_profile.service_end_handle,
-                                                                        p_data->reg_for_notify.handle,
-                                                                        &count);
-            if (ret_status != ESP_GATT_OK){
-                ESP_LOGE(GATTC_TAG, "esp_ble_gattc_get_attr_count error, %d", __LINE__);
-            }
-            if (count > 0){
-                descr_elem_result = malloc(sizeof(esp_gattc_descr_elem_t) * count);
-                if (!descr_elem_result){
-                    ESP_LOGE(GATTC_TAG, "malloc error, gattc no mem");
-                }else{
-                    ret_status = esp_ble_gattc_get_all_descr(gattc_if,
-                                                             gattc_profile.conn_id,
-                                                             p_data->reg_for_notify.handle,
-                                                             descr_elem_result,
-                                                             &count,
-                                                             offset);
-                if (ret_status != ESP_GATT_OK){
-                    ESP_LOGE(GATTC_TAG, "esp_ble_gattc_get_all_descr error, %d", __LINE__);
-                }
-
-                    for (int i = 0; i < count; ++i)
-                    {
-                        if (descr_elem_result[i].uuid.len == ESP_UUID_LEN_16 && descr_elem_result[i].uuid.uuid.uuid16 == ESP_GATT_UUID_CHAR_CLIENT_CONFIG)
-                        {
-                            esp_ble_gattc_write_char_descr (gattc_if,
-                                                            gattc_profile.conn_id,
-                                                            descr_elem_result[i].handle,
-                                                            sizeof(notify_en),
-                                                            (uint8_t *)&notify_en,
-                                                            ESP_GATT_WRITE_TYPE_RSP,
-                                                            ESP_GATT_AUTH_REQ_NONE);
-
-                            break;
-                        }
-                    }
-                }
-                free(descr_elem_result);
-            }
-
-        break;
-    }
-    case ESP_GATTC_NOTIFY_EVT:
-        ESP_LOGI(GATTC_TAG, "ESP_GATTC_NOTIFY_EVT, receive notify value:");
-        esp_log_buffer_hex(GATTC_TAG, p_data->notify.value, p_data->notify.value_len);
-        break;
-    case ESP_GATTC_WRITE_DESCR_EVT:
-        if (p_data->write.status != ESP_GATT_OK){
-            ESP_LOGE(GATTC_TAG, "write descr failed, error status = %x", p_data->write.status);
-            break;
-        }
-        ESP_LOGI(GATTC_TAG, "write descr success");
         break;
     case ESP_GATTC_SRVC_CHG_EVT: {
         esp_bd_addr_t bda;
@@ -403,17 +357,13 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
         break;
     case ESP_GATTC_DISCONNECT_EVT:
         ESP_LOGI(GATTC_TAG, "ESP_GATTC_DISCONNECT_EVT, reason = 0x%x", p_data->disconnect.reason);
-        connect = false;
-        get_service = false;
-        esp_ble_gattc_open( gattc_profile.gattc_if, gattc_profile.remote_bda,
-                            BLE_ADDR_TYPE_PUBLIC, true);
         break;
     default:
         break;
     }
 }
 
-void ble_init(void)
+static void ble_init(void)
 {
     ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT));
 
@@ -493,4 +443,24 @@ void ble_init(void)
     and the init key means which key you can distribute to the slave. */
     esp_ble_gap_set_security_param(ESP_BLE_SM_SET_INIT_KEY, &init_key, sizeof(uint8_t));
     esp_ble_gap_set_security_param(ESP_BLE_SM_SET_RSP_KEY, &rsp_key, sizeof(uint8_t));
+}
+
+static void ble_task(void* data)
+{
+    while (true)
+    {
+        if (xTaskNotifyWait(pdFALSE, pdFALSE, NULL, portMAX_DELAY))
+        {
+            EventBits_t ble_state = xEventGroupGetBits(ble_state_machine);
+            if (ble_state == BLE_NOT_INIT)
+            {
+                ble_init();
+            }
+            else if (ble_state == BLE_INITIATED)
+            {
+                ESP_LOGI(GATTC_TAG, "BLE initiated"); //TODO
+            }
+            
+        }
+    }
 }
