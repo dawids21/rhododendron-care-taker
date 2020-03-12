@@ -121,6 +121,7 @@ static void program_task(void* data)
 {
 	while (true)
 	{
-
+		ble_get_data();
+		vTaskDelay(21600000);
 	}
 }

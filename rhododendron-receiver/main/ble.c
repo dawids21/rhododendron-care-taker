@@ -37,6 +37,8 @@
 #define REMOTE_SERVICE_UUID   0xFFE0
 #define REMOTE_CHAR_UUID    0xFFE1
 
+static esp_gattc_char_elem_t* char_handle;
+
 ///Declare static functions
 static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param);
 static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp_ble_gattc_cb_param_t *param);
@@ -44,6 +46,11 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
 static esp_bt_uuid_t remote_filter_service_uuid = {
     .len = ESP_UUID_LEN_16,
     .uuid = {.uuid16 = REMOTE_SERVICE_UUID,},
+};
+
+static esp_bt_uuid_t remote_filter_char_uuid = {
+    .len = ESP_UUID_LEN_16,
+    .uuid = {.uuid16 = REMOTE_CHAR_UUID,},
 };
 
 static const char remote_device_name[] = "HM10-A5CE";
@@ -56,6 +63,9 @@ static esp_ble_scan_params_t ble_scan_params = {
     .scan_window            = 0x30,
     .scan_duplicate         = BLE_SCAN_DUPLICATE_DISABLE
 };
+
+static EventGroupHandle_t data_event_group;
+#define CONNECTED_BIT BIT0
 
 
 #define PROFILE_NUM 1
@@ -282,7 +292,8 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
             break;
         }
         ESP_LOGI(GATTC_TAG, "open success");
-        if (get_program_state() == BLE_INIT)
+        states_t state = get_program_state();
+        if (state == BLE_INIT)
         {    
             gattc_profile.conn_id = p_data->open.conn_id;
             memcpy(gattc_profile.remote_bda, p_data->open.remote_bda, sizeof(esp_bd_addr_t));
@@ -295,7 +306,10 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
                 ESP_LOGE(GATTC_TAG, "config MTU error, error code = %x", mtu_ret);
             }
         }
-        //TODO
+        else if (state == ACTIVE)
+        {
+            xEventGroupSetBits(data_event_group, CONNECTED_BIT);
+        }
         break;
     case ESP_GATTC_CFG_MTU_EVT:
         if (param->cfg_mtu.status != ESP_GATT_OK){
@@ -311,8 +325,14 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
             ESP_LOGI(GATTC_TAG, "UUID16: %x", p_data->search_res.srvc_id.uuid.uuid.uuid16);            
             gattc_profile.service_start_handle = p_data->search_res.start_handle;
             gattc_profile.service_end_handle = p_data->search_res.end_handle;
-            //esp_ble_gattc_close(gattc_profile.gattc_if, gattc_profile.conn_id);
-            set_program_state(BLE_INITIATED);
+            uint16_t count = 1;
+            esp_ble_gattc_get_char_by_uuid( gattc_profile.gattc_if,
+                                            gattc_profile.conn_id,
+                                            gattc_profile.service_start_handle,
+                                            gattc_profile.service_end_handle,
+                                            remote_filter_char_uuid,
+                                            char_handle,
+                                            &count);
         }
         break;
     }
@@ -328,6 +348,7 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
         } else {
             ESP_LOGI(GATTC_TAG, "unknown service source");
         }
+        set_program_state(BLE_INITIATED);
         break;
     case ESP_GATTC_SRVC_CHG_EVT: {
         esp_bd_addr_t bda;
@@ -435,11 +456,16 @@ void ble_init(void)
     and the init key means which key you can distribute to the slave. */
     esp_ble_gap_set_security_param(ESP_BLE_SM_SET_INIT_KEY, &init_key, sizeof(uint8_t));
     esp_ble_gap_set_security_param(ESP_BLE_SM_SET_RSP_KEY, &rsp_key, sizeof(uint8_t));
+
+    data_event_group = xEventGroupCreate();
 }
 
-void ble_open_connection(void)
+void ble_get_data(void)
 {
     esp_ble_gattc_open(gattc_profile.gattc_if, gattc_profile.remote_bda, BLE_ADDR_TYPE_PUBLIC, true);
+    xEventGroupWaitBits(data_event_group, CONNECTED_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
+    ESP_LOGI(GATTC_TAG, "Connected");
+    //esp_ble_gattc_write_char(gattc_profile.gattc_if, gattc_profile.conn_id, )
 }
 
 void ble_close_connection(void)
