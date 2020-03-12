@@ -37,7 +37,8 @@
 #define REMOTE_SERVICE_UUID   0xFFE0
 #define REMOTE_CHAR_UUID    0xFFE1
 
-static esp_gattc_char_elem_t* char_handle;
+static esp_gattc_char_elem_t* char_elem_result;
+static esp_gattc_descr_elem_t* descr_elem_result;
 
 ///Declare static functions
 static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param);
@@ -46,11 +47,6 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
 static esp_bt_uuid_t remote_filter_service_uuid = {
     .len = ESP_UUID_LEN_16,
     .uuid = {.uuid16 = REMOTE_SERVICE_UUID,},
-};
-
-static esp_bt_uuid_t remote_filter_char_uuid = {
-    .len = ESP_UUID_LEN_16,
-    .uuid = {.uuid16 = REMOTE_CHAR_UUID,},
 };
 
 static const char remote_device_name[] = "HM10-A5CE";
@@ -66,6 +62,7 @@ static esp_ble_scan_params_t ble_scan_params = {
 
 static EventGroupHandle_t data_event_group;
 #define CONNECTED_BIT BIT0
+#define WRITE_BIT BIT1
 
 
 #define PROFILE_NUM 1
@@ -325,14 +322,6 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
             ESP_LOGI(GATTC_TAG, "UUID16: %x", p_data->search_res.srvc_id.uuid.uuid.uuid16);            
             gattc_profile.service_start_handle = p_data->search_res.start_handle;
             gattc_profile.service_end_handle = p_data->search_res.end_handle;
-            uint16_t count = 1;
-            esp_ble_gattc_get_char_by_uuid( gattc_profile.gattc_if,
-                                            gattc_profile.conn_id,
-                                            gattc_profile.service_start_handle,
-                                            gattc_profile.service_end_handle,
-                                            remote_filter_char_uuid,
-                                            char_handle,
-                                            &count);
         }
         break;
     }
@@ -348,7 +337,107 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
         } else {
             ESP_LOGI(GATTC_TAG, "unknown service source");
         }
+        uint16_t count  = 0;
+        uint16_t offset = 0;
+        esp_gatt_status_t ret_status = esp_ble_gattc_get_attr_count(gattc_if,
+                                                                    gattc_profile.conn_id,
+                                                                    ESP_GATT_DB_CHARACTERISTIC,
+                                                                    gattc_profile.service_start_handle,
+                                                                    gattc_profile.service_end_handle,
+                                                                    INVALID_HANDLE,
+                                                                    &count);
+            if (ret_status != ESP_GATT_OK){
+                ESP_LOGE(GATTC_TAG, "esp_ble_gattc_get_attr_count error, %d", __LINE__);
+            }
+            if (count > 0){
+                char_elem_result = (esp_gattc_char_elem_t *)malloc(sizeof(esp_gattc_char_elem_t) * count);
+                if (!char_elem_result){
+                    ESP_LOGE(GATTC_TAG, "gattc no mem");
+                }else{
+                    ret_status = esp_ble_gattc_get_all_char(gattc_if,
+                                                            gattc_profile.conn_id,
+                                                            gattc_profile.service_start_handle,
+                                                            gattc_profile.service_end_handle,
+                                                            char_elem_result,
+                                                            &count,
+                                                            offset);
+                    if (ret_status != ESP_GATT_OK){
+                        ESP_LOGE(GATTC_TAG, "esp_ble_gattc_get_all_char error, %d", __LINE__);
+                    }
+                    esp_ble_gattc_register_for_notify(gattc_profile.gattc_if, gattc_profile.remote_bda, char_elem_result[0].char_handle);
+                }
+            }
         set_program_state(BLE_INITIATED);
+        break;
+    case ESP_GATTC_REG_FOR_NOTIFY_EVT: {
+        if (p_data->reg_for_notify.status != ESP_GATT_OK){
+            ESP_LOGE(GATTC_TAG, "reg for notify failed, error status = %x", p_data->reg_for_notify.status);
+            break;
+        }
+
+            uint16_t count = 0;
+            uint16_t offset = 0;
+            uint16_t notify_en = 1;
+            esp_gatt_status_t ret_status = esp_ble_gattc_get_attr_count(gattc_if,
+                                                                        gattc_profile.conn_id,
+                                                                        ESP_GATT_DB_DESCRIPTOR,
+                                                                        gattc_profile.service_start_handle,
+                                                                        gattc_profile.service_end_handle,
+                                                                        p_data->reg_for_notify.handle,
+                                                                        &count);
+            if (ret_status != ESP_GATT_OK){
+                ESP_LOGE(GATTC_TAG, "esp_ble_gattc_get_attr_count error, %d", __LINE__);
+            }
+            if (count > 0){
+                descr_elem_result = malloc(sizeof(esp_gattc_descr_elem_t) * count);
+                if (!descr_elem_result){
+                    ESP_LOGE(GATTC_TAG, "malloc error, gattc no mem");
+                }else{
+                    ret_status = esp_ble_gattc_get_all_descr(gattc_if,
+                                                             gattc_profile.conn_id,
+                                                             p_data->reg_for_notify.handle,
+                                                             descr_elem_result,
+                                                             &count,
+                                                             offset);
+                if (ret_status != ESP_GATT_OK){
+                    ESP_LOGE(GATTC_TAG, "esp_ble_gattc_get_all_descr error, %d", __LINE__);
+                }
+
+                    for (int i = 0; i < count; ++i)
+                    {
+                        if (descr_elem_result[i].uuid.len == ESP_UUID_LEN_16 && descr_elem_result[i].uuid.uuid.uuid16 == ESP_GATT_UUID_CHAR_CLIENT_CONFIG)
+                        {
+                            esp_ble_gattc_write_char_descr (gattc_if,
+                                                            gattc_profile.conn_id,
+                                                            descr_elem_result[i].handle ,
+                                                            sizeof(notify_en),
+                                                            (uint8_t *)&notify_en,
+                                                            ESP_GATT_WRITE_TYPE_RSP,
+                                                            ESP_GATT_AUTH_REQ_NONE);
+
+                            break;
+                        }
+                    }
+                }
+                free(descr_elem_result);
+            }
+
+        break;
+    }
+    case ESP_GATTC_NOTIFY_EVT:
+        ESP_LOGI(GATTC_TAG, "ESP_GATTC_NOTIFY_EVT, receive notify value:");
+        char msg[20];
+        memcpy(msg, p_data->notify.value, p_data->notify.value_len);
+        msg[p_data->read.value_len] = '\0';
+        ESP_LOGI(GATTC_TAG, "%s", msg);
+        //TODO save value
+        break;
+    case ESP_GATTC_WRITE_DESCR_EVT:
+        if (p_data->write.status != ESP_GATT_OK){
+            ESP_LOGE(GATTC_TAG, "write descr failed, error status = %x", p_data->write.status);
+            break;
+        }
+        ESP_LOGI(GATTC_TAG, "write descr success");
         break;
     case ESP_GATTC_SRVC_CHG_EVT: {
         esp_bd_addr_t bda;
@@ -363,6 +452,7 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
             break;
         }
         ESP_LOGI(GATTC_TAG, "Write char success ");
+        xEventGroupSetBits(data_event_group, WRITE_BIT);
         break;
     case ESP_GATTC_DISCONNECT_EVT:
         if (get_program_state() == BLE_INITIATED)
@@ -460,12 +550,15 @@ void ble_init(void)
     data_event_group = xEventGroupCreate();
 }
 
+static uint8_t msg[] = "AT+ADC4?";
+
 void ble_get_data(void)
 {
     esp_ble_gattc_open(gattc_profile.gattc_if, gattc_profile.remote_bda, BLE_ADDR_TYPE_PUBLIC, true);
     xEventGroupWaitBits(data_event_group, CONNECTED_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
     ESP_LOGI(GATTC_TAG, "Connected");
-    //esp_ble_gattc_write_char(gattc_profile.gattc_if, gattc_profile.conn_id, )
+    esp_ble_gattc_write_char(gattc_profile.gattc_if, gattc_profile.conn_id, char_elem_result[0].char_handle, 8, msg, ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_NONE);
+    xEventGroupWaitBits(data_event_group, WRITE_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
 }
 
 void ble_close_connection(void)
