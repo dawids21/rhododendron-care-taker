@@ -64,7 +64,9 @@ static esp_ble_scan_params_t ble_scan_params = {
 static EventGroupHandle_t data_event_group;
 #define CONNECTED_BIT BIT0
 #define WRITE_BIT BIT1
+#define READ_BIT BIT2
 
+static int ble_value = 0;
 
 #define PROFILE_NUM 1
 #define PROFILE_ID 0
@@ -431,7 +433,8 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
         memcpy(msg, p_data->notify.value, p_data->notify.value_len);
         msg[p_data->read.value_len] = '\0';
         ESP_LOGI(GATTC_TAG, "%s", msg);
-        //TODO save value
+        ble_value = (msg[8] - '0') * 100 + (msg[10] - '0') * 10 + (msg[11] - '0');
+        xEventGroupSetBits(data_event_group, READ_BIT);
         break;
     case ESP_GATTC_WRITE_DESCR_EVT:
         if (p_data->write.status != ESP_GATT_OK){
@@ -551,16 +554,17 @@ void ble_init(void)
     data_event_group = xEventGroupCreate();
 }
 
-static uint8_t msg[] = "AT+ADC4?";
 
-void ble_get_data(void)
+int ble_get_data(void)
 {
     esp_ble_gattc_open(gattc_profile.gattc_if, gattc_profile.remote_bda, BLE_ADDR_TYPE_PUBLIC, true);
     xEventGroupWaitBits(data_event_group, CONNECTED_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
     ESP_LOGI(GATTC_TAG, "Connected");
+    static uint8_t msg[] = "AT+ADC4?";
     esp_ble_gattc_write_char(gattc_profile.gattc_if, gattc_profile.conn_id, char_elem_result[0].char_handle, 8, msg, ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_NONE);
-    xEventGroupWaitBits(data_event_group, WRITE_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
+    xEventGroupWaitBits(data_event_group, WRITE_BIT|READ_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
     ble_close_connection();
+    return ble_value;
 }
 
 void ble_close_connection(void)

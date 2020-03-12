@@ -122,7 +122,8 @@ static void program_task(void* data)
 {
 	while (true)
 	{
-		ble_get_data();
+		int ble_value = ble_get_data();
+		ESP_LOGI(PROGRAM_TAG, "Value: %d", ble_value);
 		vTaskDelay(21600000 / portTICK_PERIOD_MS);
 	}
 }
