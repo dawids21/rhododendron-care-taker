@@ -31,6 +31,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
+#include "ble.h"
 #include "global.h"
 
 #define GATTC_TAG             "SEC_GATTC"
@@ -559,6 +560,7 @@ void ble_get_data(void)
     ESP_LOGI(GATTC_TAG, "Connected");
     esp_ble_gattc_write_char(gattc_profile.gattc_if, gattc_profile.conn_id, char_elem_result[0].char_handle, 8, msg, ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_NONE);
     xEventGroupWaitBits(data_event_group, WRITE_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
+    ble_close_connection();
 }
 
 void ble_close_connection(void)
