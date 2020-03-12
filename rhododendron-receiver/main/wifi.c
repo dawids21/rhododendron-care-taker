@@ -7,8 +7,6 @@
 
 static const char *TAG = "wifi station";
 
-static void wifi_task(void* data);
-static void wifi_init(void);
 static void event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data);
 
@@ -17,59 +15,8 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 #define ESP_MAXIMUM_RETRY  10
 
 static int s_retry_num = 0;
-static TaskHandle_t wifi_task_handle;
 
-void wifi_start(void)
-{
-    xTaskCreate(wifi_task, "WiFi Task", 4096, NULL, 1, &wifi_task_handle);
-}
-
-void wifi_notify(void)
-{
-    xTaskNotify(wifi_task_handle, 0, eNoAction);
-}
-
-static void wifi_task(void* data)
-{
-    while (true)
-    {
-        if(xTaskNotifyWait(pdFALSE, pdFALSE, NULL, portMAX_DELAY))
-        {
-            EventBits_t wifi_state = xEventGroupGetBits(wifi_state_machine);
-            if (wifi_state == WIFI_NOT_INIT)
-            {
-                wifi_init();
-            }
-            else if (wifi_state == WIFI_INITIATED)
-            {
-                ESP_LOGI(TAG, "WiFi initiated");
-            }
-            else if (wifi_state == WIFI_CONNECTED)
-            {
-                ESP_LOGI(TAG, "WiFi connected");
-                mqtt_notify();
-            }
-            else if (wifi_state == WIFI_DISCONNECTED)
-            {
-                ESP_LOGI(TAG, "WiFi has been disconnected, attempting to reconnect");
-                mqtt_notify();
-            }
-            else if (wifi_state == WIFI_RECONNECTED)
-            {
-                ESP_LOGI(TAG, "WiFi reconnected");
-                mqtt_notify();
-                xEventGroupClearBits(wifi_state_machine, WIFI_ALL_BITS);
-                xEventGroupSetBits(wifi_state_machine, WIFI_CONNECTED);
-            }
-            else if (wifi_state == WIFI_FAILED)
-            {
-                ESP_LOGI(TAG, "WiFi has failed, reset the ESP");
-            }
-        }
-    }
-}
-
-static void wifi_init(void)
+void wifi_init(void)
 {
     ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
 
@@ -89,11 +36,9 @@ static void wifi_init(void)
     };
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config) );
-    ESP_ERROR_CHECK(esp_wifi_start() );
+    ESP_ERROR_CHECK(esp_wifi_start());
 
     ESP_LOGI(TAG, "wifi_init_sta finished.");
-    xEventGroupSetBits(wifi_state_machine, WIFI_INITIATED);
-    wifi_notify();
 }
 
 static void event_handler(void* arg, esp_event_base_t event_base,
@@ -105,8 +50,10 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     } 
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
     {
-        xEventGroupClearBits(wifi_state_machine, WIFI_ALL_BITS);
-        xEventGroupSetBits(wifi_state_machine, WIFI_DISCONNECTED);
+        if (get_program_state() != WIFI_INIT)
+        {
+            set_program_state(WIFI_RECONNECT);
+        }
         if (s_retry_num < ESP_MAXIMUM_RETRY) 
         {
             esp_wifi_connect();
@@ -115,11 +62,9 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         } 
         else 
         {
-            xEventGroupClearBits(wifi_state_machine, WIFI_ALL_BITS);
-            xEventGroupSetBits(wifi_state_machine, WIFI_FAILED);
+            set_program_state(WIFI_FAILED);
         }
         ESP_LOGI(TAG,"connect to the AP fail");
-        wifi_notify();
     } 
     else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) 
     {
@@ -127,17 +72,13 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         ESP_LOGI(TAG, "got ip:%s",
                  ip4addr_ntoa(&event->ip_info.ip));
         s_retry_num = 0;
-        EventBits_t bits = xEventGroupWaitBits(wifi_state_machine, WIFI_INITIATED|WIFI_DISCONNECTED,
-                                                pdFALSE, pdFALSE, portMAX_DELAY);
-        xEventGroupClearBits(wifi_state_machine, WIFI_ALL_BITS);
-        if (bits == WIFI_INITIATED)
+        if (get_program_state() == WIFI_RECONNECT)
         {
-            xEventGroupSetBits(wifi_state_machine, WIFI_CONNECTED);
+            set_program_state(WIFI_RECONNECTED);
         }
         else
         {
-            xEventGroupSetBits(wifi_state_machine, WIFI_RECONNECTED);
+            set_program_state(MQTT_INIT);
         }
-        wifi_notify();
     }
 }

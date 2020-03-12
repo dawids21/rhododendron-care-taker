@@ -14,14 +14,28 @@
 #include "ble.h"
 #include "global.h"
 
+static states_t program_state;
+
+static const char* LED_TAG = "LED";
+static const char* PROGRAM_TAG = "PROGRAM";
+
+static TaskHandle_t main_task_handle;
+static TaskHandle_t program_task_handle;
+
+static void main_task(void* data);
+static void program_task(void* data);
 void led_task(void* data);
 
-EventGroupHandle_t mqtt_state_machine;
-EventGroupHandle_t wifi_state_machine;
-EventGroupHandle_t ble_state_machine;
-static const char* LED_TAG = "LED";
+void set_program_state(states_t state)
+{
+	program_state = state;
+	xTaskNotifyGive(main_task_handle);
+}
 
-TaskHandle_t led_task_handle; 
+states_t get_program_state(void)
+{
+	return program_state;
+}
 
 void app_main()
 {
@@ -33,14 +47,53 @@ void app_main()
     }
     ESP_ERROR_CHECK(ret);
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    mqtt_state_machine = xEventGroupCreate();
-	wifi_state_machine = xEventGroupCreate();
-	ble_state_machine = xEventGroupCreate();
-	//wifi_start();
+    program_state = PROGRAM_START;
+	xTaskCreate(main_task, "MAIN task", 4096, NULL, 1, &main_task_handle);
+	set_program_state(WIFI_INIT);
 	//xTaskCreate(led_task, "LED task", 2048, NULL, 1, &led_task_handle);
-    //mqtt_app_start();
-	ble_start();
-	//wifi_notify();
+}
+
+void main_task(void* data)
+{
+	while (true)
+	{
+		if(ulTaskNotifyTake(0, portMAX_DELAY))
+		{
+			switch (get_program_state())
+			{
+				case PROGRAM_START:
+					break;
+				case WIFI_INIT:
+					wifi_init();
+					break;
+				case WIFI_FAILED:
+					//TODO
+					break;
+				case MQTT_INIT:
+					mqtt_init();
+					break;
+				case BLE_INIT:
+					ble_init();
+					break;
+				case BLE_INITIATED:
+					ble_close_connection();
+					break;
+				case ACTIVE:
+					ESP_LOGI(PROGRAM_TAG, "Program active");
+					xTaskCreate(program_task, "PROGRAM task", 4096, NULL, 1, program_task_handle);
+					break;
+				case WIFI_RECONNECT:
+					//TODO
+					break;
+				case WIFI_RECONNECTED:
+					//TODO
+					break;
+				case MQTT_REOPEN:
+					//TODO
+					break;
+			}
+		}
+	}
 }
 
 void led_task(void* data)
@@ -61,5 +114,13 @@ void led_task(void* data)
 				//TODO turn led on
 			}
 		}
+	}
+}
+
+static void program_task(void* data)
+{
+	while (true)
+	{
+
 	}
 }

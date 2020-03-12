@@ -1,55 +1,24 @@
-#ifndef APP_EVENT_GROUP_H
-#define APP_EVENT_GROUP_H
+#ifndef GLOBAL_H
+#define GLOBAL_H
 
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
 
-#define WIFI_INIT_BIT BIT0
-#define WIFI_CONNECTED_BIT BIT1
-#define WIFI_FAIL_BIT BIT2
-#define WIFI_DIS_BIT BIT3
-#define WIFI_RECON_BIT BIT4
+typedef enum states
+{
+	PROGRAM_START = 0,
+	WIFI_INIT,
+	WIFI_FAILED,
+	MQTT_INIT,
+	BLE_INIT,
+	BLE_INITIATED,
+	ACTIVE,
+	WIFI_RECONNECT,
+	WIFI_RECONNECTED,
+	MQTT_REOPEN
+} states_t;
 
-#define WIFI_ALL_BITS WIFI_INIT_BIT|WIFI_CONNECTED_BIT|WIFI_FAIL_BIT|WIFI_DIS_BIT|WIFI_RECON_BIT
-
-enum wifi_states {
-    WIFI_NOT_INIT = 0,
-    WIFI_INITIATED = WIFI_INIT_BIT,
-    WIFI_CONNECTED = WIFI_INIT_BIT|WIFI_CONNECTED_BIT,
-    WIFI_DISCONNECTED = WIFI_INIT_BIT|WIFI_DIS_BIT,
-    WIFI_FAILED = WIFI_INIT_BIT|WIFI_FAIL_BIT,
-    WIFI_RECONNECTED = WIFI_INIT_BIT|WIFI_RECON_BIT
-};
-
-#define MQTT_INIT_BIT BIT0
-#define MQTT_CONNECTED_BIT BIT1
-#define MQTT_STOP_BIT BIT2
-#define MQTT_RECON_BIT BIT3
-
-#define MQTT_ALL_BITS MQTT_INIT_BIT|MQTT_CONNECTED_BIT|MQTT_STOP_BIT
-
-enum mqtt_states {
-    MQTT_NOT_INIT = 0,
-    MQTT_INITIATED = MQTT_INIT_BIT,
-    MQTT_CONNECTED = MQTT_INIT_BIT|MQTT_CONNECTED_BIT,
-    MQTT_STOPPED = MQTT_INIT_BIT|MQTT_STOP_BIT,
-    MQTT_RECONNECTING = MQTT_INIT_BIT|MQTT_RECON_BIT,
-    MQTT_RECONNECTED = MQTT_INIT_BIT|MQTT_CONNECTED_BIT|MQTT_RECON_BIT,
-};
-
-#define BLE_INIT_BIT BIT0
-#define BLE_CONNECT_BIT BIT1
-#define BLE_ALL_BITS BLE_INIT_BIT | BLE_CONNECT_BIT
-
-enum ble_states {
-    BLE_NOT_INIT = 0,
-    BLE_INITIATED = BLE_INIT_BIT,
-    BLE_CONNECTED = BLE_INIT_BIT | BLE_CONNECT_BIT,
-};
-
-extern EventGroupHandle_t wifi_state_machine;
-extern EventGroupHandle_t mqtt_state_machine;
-extern EventGroupHandle_t ble_state_machine;
-extern TaskHandle_t led_task_handle;
+void set_program_state(states_t state);
+states_t get_program_state(void);
 
 #endif

@@ -37,12 +37,7 @@
 #define REMOTE_SERVICE_UUID   0xFFE0
 #define REMOTE_CHAR_UUID    0xFFE1
 
-static TaskHandle_t ble_task_handle;
-
 ///Declare static functions
-static void ble_init(void);
-static void ble_task(void* data);
-static void ble_task_notify(void);
 static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param);
 static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp_ble_gattc_cb_param_t *param);
 
@@ -159,17 +154,6 @@ static char *esp_auth_req_to_str(esp_ble_auth_req_t auth_req)
 }
 
 static bool first_connect = false;
-
-void ble_start(void)
-{
-    xTaskCreate(ble_task, "BLE Task", 4096, NULL, 1, &ble_task_handle);
-    ble_task_notify();
-}
-
-static void ble_task_notify(void)
-{
-    xTaskNotify(ble_task_handle, 0, eNoAction);
-}
 
 static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
@@ -298,14 +282,20 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
             break;
         }
         ESP_LOGI(GATTC_TAG, "open success");
-        gattc_profile.conn_id = p_data->open.conn_id;
-        memcpy(gattc_profile.remote_bda, p_data->open.remote_bda, sizeof(esp_bd_addr_t));
-        ESP_LOGI(GATTC_TAG, "REMOTE BDA:");
-        esp_log_buffer_hex(GATTC_TAG, gattc_profile.remote_bda, sizeof(esp_bd_addr_t));
-        esp_err_t mtu_ret = esp_ble_gattc_send_mtu_req (gattc_if, p_data->open.conn_id);
-        if (mtu_ret){
-            ESP_LOGE(GATTC_TAG, "config MTU error, error code = %x", mtu_ret);
+        if (get_program_state() == BLE_INIT)
+        {    
+            gattc_profile.conn_id = p_data->open.conn_id;
+            memcpy(gattc_profile.remote_bda, p_data->open.remote_bda, sizeof(esp_bd_addr_t));
+            ESP_LOGI(GATTC_TAG, "REMOTE BDA:");
+            esp_log_buffer_hex(GATTC_TAG, gattc_profile.remote_bda, sizeof(esp_bd_addr_t));
+            //TODO check if send mtu is required every connection
+            esp_err_t mtu_ret = esp_ble_gattc_send_mtu_req (gattc_if, p_data->open.conn_id);
+            if (mtu_ret)
+            {
+                ESP_LOGE(GATTC_TAG, "config MTU error, error code = %x", mtu_ret);
+            }
         }
+        //TODO
         break;
     case ESP_GATTC_CFG_MTU_EVT:
         if (param->cfg_mtu.status != ESP_GATT_OK){
@@ -321,10 +311,8 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
             ESP_LOGI(GATTC_TAG, "UUID16: %x", p_data->search_res.srvc_id.uuid.uuid.uuid16);            
             gattc_profile.service_start_handle = p_data->search_res.start_handle;
             gattc_profile.service_end_handle = p_data->search_res.end_handle;
-            xEventGroupClearBits(ble_state_machine, BLE_ALL_BITS);
-            xEventGroupSetBits(ble_state_machine, BLE_INITIATED);
-            esp_ble_gattc_close(gattc_profile.gattc_if, gattc_profile.conn_id);
-            ble_task_notify();
+            //esp_ble_gattc_close(gattc_profile.gattc_if, gattc_profile.conn_id);
+            set_program_state(BLE_INITIATED);
         }
         break;
     }
@@ -356,14 +344,18 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
         ESP_LOGI(GATTC_TAG, "Write char success ");
         break;
     case ESP_GATTC_DISCONNECT_EVT:
-        ESP_LOGI(GATTC_TAG, "ESP_GATTC_DISCONNECT_EVT, reason = 0x%x", p_data->disconnect.reason);
+        if (get_program_state() == BLE_INITIATED)
+        {
+            ESP_LOGI(GATTC_TAG, "ESP_GATTC_DISCONNECT_EVT, reason = 0x%x", p_data->disconnect.reason);
+            set_program_state(ACTIVE);
+        }
         break;
     default:
         break;
     }
 }
 
-static void ble_init(void)
+void ble_init(void)
 {
     ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT));
 
@@ -445,22 +437,12 @@ static void ble_init(void)
     esp_ble_gap_set_security_param(ESP_BLE_SM_SET_RSP_KEY, &rsp_key, sizeof(uint8_t));
 }
 
-static void ble_task(void* data)
+void ble_open_connection(void)
 {
-    while (true)
-    {
-        if (xTaskNotifyWait(pdFALSE, pdFALSE, NULL, portMAX_DELAY))
-        {
-            EventBits_t ble_state = xEventGroupGetBits(ble_state_machine);
-            if (ble_state == BLE_NOT_INIT)
-            {
-                ble_init();
-            }
-            else if (ble_state == BLE_INITIATED)
-            {
-                ESP_LOGI(GATTC_TAG, "BLE initiated"); //TODO
-            }
-            
-        }
-    }
+    esp_ble_gattc_open(gattc_profile.gattc_if, gattc_profile.remote_bda, BLE_ADDR_TYPE_PUBLIC, true);
+}
+
+void ble_close_connection(void)
+{
+    esp_ble_gattc_close(gattc_profile.gattc_if, gattc_profile.conn_id);
 }
