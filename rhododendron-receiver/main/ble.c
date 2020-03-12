@@ -1,22 +1,3 @@
-/*
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
-
-
-
-/****************************************************************************
-*
-* This file is for gatt_security_client demo. It can scan ble device, connect one device that needs to be encrypted.
-* run gatt_security_server demo, the gatt_security_client demo will automatically connect the gatt_security_server,
-* then paring and bonding.
-*
-****************************************************************************/
-
-#include <stdint.h>
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -163,8 +144,6 @@ static char *esp_auth_req_to_str(esp_ble_auth_req_t auth_req)
    return auth_str;
 }
 
-static bool first_connect = false;
-
 static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
     uint8_t *adv_name = NULL;
@@ -222,6 +201,7 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
         break;
     }
     case ESP_GAP_BLE_SCAN_RESULT_EVT: {
+        static bool first_connect = false;
         esp_ble_gap_cb_param_t *scan_result = (esp_ble_gap_cb_param_t *)param;
         switch (scan_result->scan_rst.search_evt) {
         case ESP_GAP_SEARCH_INQ_RES_EVT:
