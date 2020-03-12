@@ -4,11 +4,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "global.h"
-
-#define BROKER_HOST "192.168.8.5"
-#define BROKER_PORT 1883
-#define BROKER_USERNAME "***REMOVED***"
-#define BROKER_PASSWORD "***REMOVED***"
+#include "secrets.h"
 
 static void mqtt_publish_task(void* data);
 static void mqtt_event_handler_cb(void *handler_args, esp_event_base_t base,

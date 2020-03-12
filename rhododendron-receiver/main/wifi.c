@@ -3,15 +3,13 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "global.h"
-#include "mqtt.h"
+#include "secrets.h"
 
 static const char *TAG = "wifi station";
 
 static void event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data);
 
-#define ESP_WIFI_SSID      "***REMOVED***"
-#define ESP_WIFI_PASS      "***REMOVED***"
 #define ESP_MAXIMUM_RETRY  10
 
 static int s_retry_num = 0;
