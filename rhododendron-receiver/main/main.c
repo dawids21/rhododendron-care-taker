@@ -53,6 +53,7 @@ void app_main()
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     program_state = PROGRAM_START;
 	xTaskCreate(main_task, "MAIN task", 4096, NULL, 1, &main_task_handle);
+	xTaskCreate(program_task, "PROGRAM task", 4096, NULL, 1, &program_task_handle);
 	set_program_state(WIFI_INIT);
 	//xTaskCreate(led_task, "LED task", 2048, NULL, 1, &led_task_handle);
 }
@@ -81,11 +82,11 @@ void main_task(void* data)
 					break;
 				case BLE_INITIATED:
 					vTaskDelay(1000 / portTICK_PERIOD_MS);
+					ESP_LOGI(PROGRAM_TAG, "Program active");
 					ble_close_connection();
 					break;
 				case ACTIVE:
-					ESP_LOGI(PROGRAM_TAG, "Program active");
-					xTaskCreate(program_task, "PROGRAM task", 4096, NULL, 1, program_task_handle);
+					xTaskNotifyGive(program_task_handle);
 					break;
 				case WIFI_RECONNECT:
 					//TODO
@@ -126,14 +127,21 @@ static void program_task(void* data)
 {
 	while (true)
 	{
-		int ble_value = ble_get_data();
-		int moisture = convert_value(ble_value);
-		ESP_LOGI(PROGRAM_TAG, "Value: %d Moisture: %d%%", ble_value, moisture);
-		mqtt_msg_t msg;
-		strcpy(msg.topic, "home/garden/rhododendrons/moisture");
-		sprintf(msg.payload, "%d", moisture);
-		add_mqtt_msg(msg);
-		vTaskDelay(21600000 / portTICK_PERIOD_MS);
+		if (ulTaskNotifyTake(0, portMAX_DELAY))
+		{
+			int ble_value = ble_get_data();
+			int moisture = convert_value(ble_value);
+			ESP_LOGI(PROGRAM_TAG, "Value: %d Moisture: %d%%", ble_value, moisture);
+			mqtt_msg_t msg;
+			strcpy(msg.topic, "home/garden/rhododendrons/moisture");
+			sprintf(msg.payload, "%d", moisture);
+			add_mqtt_msg(msg);
+			vTaskDelay(21600000 / portTICK_PERIOD_MS);
+			if (get_program_state() == ACTIVE)
+			{
+				set_program_state(ACTIVE);
+			}
+		}
 	}
 }
 
