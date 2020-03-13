@@ -413,8 +413,11 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
         memcpy(msg, p_data->notify.value, p_data->notify.value_len);
         msg[p_data->read.value_len] = '\0';
         ESP_LOGI(GATTC_TAG, "%s", msg);
-        ble_value = (msg[8] - '0') * 100 + (msg[10] - '0') * 10 + (msg[11] - '0');
-        xEventGroupSetBits(data_event_group, READ_BIT);
+        if (!strncmp("OK+ADC4:", msg, 8))
+        {
+            ble_value = (msg[8] - '0') * 100 + (msg[10] - '0') * 10 + (msg[11] - '0');
+            xEventGroupSetBits(data_event_group, READ_BIT);
+        }
         break;
     case ESP_GATTC_WRITE_DESCR_EVT:
         if (p_data->write.status != ESP_GATT_OK){
