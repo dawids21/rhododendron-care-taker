@@ -14,6 +14,9 @@
 #include "ble.h"
 #include "global.h"
 
+#define MIN_VALUE_MOISTURE 0
+#define MAX_VALUE_MOISTURE 330
+
 static states_t program_state;
 
 static const char* LED_TAG = "LED";
@@ -24,6 +27,7 @@ static TaskHandle_t program_task_handle;
 
 static void main_task(void* data);
 static void program_task(void* data);
+static int convert_value(int value);
 void led_task(void* data);
 
 void set_program_state(states_t state)
@@ -123,7 +127,17 @@ static void program_task(void* data)
 	while (true)
 	{
 		int ble_value = ble_get_data();
-		ESP_LOGI(PROGRAM_TAG, "Value: %d", ble_value);
+		int moisture = convert_value(ble_value);
+		ESP_LOGI(PROGRAM_TAG, "Value: %d Moisture: %d%%", ble_value, moisture);
+		mqtt_msg_t msg;
+		strcpy(msg.topic, "home/garden/rhododendrons/moisture");
+		sprintf(msg.payload, "%d", moisture);
+		add_mqtt_msg(msg);
 		vTaskDelay(21600000 / portTICK_PERIOD_MS);
 	}
+}
+
+static int convert_value(int value)
+{
+	return (value - MIN_VALUE_MOISTURE) * 100 / (MAX_VALUE_MOISTURE - MIN_VALUE_MOISTURE);
 }

@@ -44,14 +44,10 @@ static void mqtt_publish_task(void* data)
     {
         if (xQueueReceive(mqtt_queue, &buffer, portMAX_DELAY))
         {
-            if(get_program_state() == ACTIVE)
-            {
-                esp_mqtt_client_publish(client, buffer.topic, buffer.payload, 0, 1, pdTRUE);
+            while (get_program_state() != ACTIVE) {
+                vTaskDelay(5000/portTICK_PERIOD_MS);
             }
-            else
-            {
-                vTaskDelay(5000);
-            }
+            esp_mqtt_client_publish(client, buffer.topic, buffer.payload, 0, 1, pdTRUE);
         }
     }
 }
@@ -65,6 +61,7 @@ static void mqtt_event_handler_cb(  void *handler_args,
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+            esp_mqtt_client_publish(client, "home/garden/rhododendrons/state", "online", 0, 1, pdTRUE);
             set_program_state(BLE_INIT);
             break;
         case MQTT_EVENT_DISCONNECTED:
