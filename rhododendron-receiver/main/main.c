@@ -80,7 +80,7 @@ void main_task(void* data)
 					ble_init();
 					break;
 				case BLE_INITIATED:
-					vTaskDelay(5000 / portTICK_PERIOD_MS);
+					vTaskDelay(1000 / portTICK_PERIOD_MS);
 					ble_close_connection();
 					break;
 				case ACTIVE:

@@ -6,6 +6,9 @@
 #include "global.h"
 #include "secrets.h"
 
+#define LWT_TOPIC "home/garden/rhododendrons/state"
+#define LWT_MSG "offline"
+
 static void mqtt_publish_task(void* data);
 static void mqtt_event_handler_cb(void *handler_args, esp_event_base_t base,
                                     int32_t event_id, void *event_data);
@@ -22,7 +25,11 @@ void mqtt_init(void)
         .host = BROKER_HOST,
         .port = BROKER_PORT,
         .username = BROKER_USERNAME,
-        .password = BROKER_PASSWORD
+        .password = BROKER_PASSWORD,
+        .lwt_topic = LWT_TOPIC,
+        .lwt_msg = LWT_MSG,
+        .lwt_qos = 1,
+        .lwt_retain = pdTRUE,
     };
     client = esp_mqtt_client_init(&mqtt_cfg);
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler_cb, NULL);
