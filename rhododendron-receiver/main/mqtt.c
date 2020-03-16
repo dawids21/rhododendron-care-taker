@@ -17,6 +17,8 @@ static const char *TAG = "MQTT_CLIENT";
 static esp_mqtt_client_handle_t client;
 static TaskHandle_t mqtt_publish_task_handle;
 static QueueHandle_t mqtt_queue;
+static EventGroupHandle_t mqtt_event_group;
+#define REOPEN_BIT BIT0
 
 void mqtt_init(void)
 {
@@ -36,12 +38,25 @@ void mqtt_init(void)
     mqtt_queue = xQueueCreate(10, sizeof(mqtt_msg_t));
     xTaskCreate(mqtt_publish_task, "MQTT Publish Task", 4096, NULL, 1, mqtt_publish_task_handle);
     esp_mqtt_client_start(client);
+    mqtt_event_group = xEventGroupCreate();
 }
 
 void add_mqtt_msg(mqtt_msg_t msg)
 {
     ESP_LOGI(TAG, "Got data in MQTT queue");
     xQueueSend(mqtt_queue, &msg, 0);
+}
+
+void mqtt_stop(void)
+{
+    ESP_LOGI(TAG, "Stopping MQTT client");
+    esp_mqtt_client_stop(client);
+}
+
+void mqtt_reopen(void)
+{
+    ESP_LOGI(TAG, "Reconnecting MQTT client");
+    esp_mqtt_client_start(client);
 }
 
 static void mqtt_publish_task(void* data)
@@ -67,10 +82,21 @@ static void mqtt_event_handler_cb(  void *handler_args,
     esp_mqtt_event_handle_t event = (esp_mqtt_event_handle_t)event_data;
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
-            ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-            esp_mqtt_client_publish(client, "home/garden/rhododendrons/state", "online", 0, 1, pdTRUE);
-            set_program_state(BLE_INIT);
+        {
+            states_t state = get_program_state();
+            if (state == MQTT_INIT)
+            {
+                ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+                esp_mqtt_client_publish(client, "home/garden/rhododendrons/state", "online", 0, 1, pdTRUE);
+                set_program_state(BLE_INIT);
+            }
+            else if (state == WIFI_RECONNECTED)
+            {
+                esp_mqtt_client_publish(client, "home/garden/rhododendrons/state", "online", 0, 1, pdTRUE);
+                set_program_state(ACTIVE);
+            }
             break;
+        }
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
             break;

@@ -24,16 +24,20 @@ static const char* PROGRAM_TAG = "PROGRAM";
 
 static TaskHandle_t main_task_handle;
 static TaskHandle_t program_task_handle;
+static QueueHandle_t states_queue;
+static EventGroupHandle_t program_event_group;
+#define ACTIVE_BIT BIT0
 
 static void main_task(void* data);
 static void program_task(void* data);
+static void program_procedure(void);
 static int convert_value(int value);
 void led_task(void* data);
 
 void set_program_state(states_t state)
 {
-	program_state = state;
-	xTaskNotifyGive(main_task_handle);
+	ESP_LOGI(PROGRAM_TAG, "Setting state: %d", state);	
+	xQueueSend(states_queue, &state, 5000 / portTICK_PERIOD_MS);
 }
 
 states_t get_program_state(void)
@@ -53,6 +57,8 @@ void app_main()
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     program_state = PROGRAM_START;
 	xTaskCreate(main_task, "MAIN task", 4096, NULL, 1, &main_task_handle);
+	states_queue = xQueueCreate(10, sizeof(states_t));
+	program_event_group = xEventGroupCreate();
 	xTaskCreate(program_task, "PROGRAM task", 4096, NULL, 1, &program_task_handle);
 	set_program_state(WIFI_INIT);
 	//xTaskCreate(led_task, "LED task", 2048, NULL, 1, &led_task_handle);
@@ -62,7 +68,7 @@ void main_task(void* data)
 {
 	while (true)
 	{
-		if(ulTaskNotifyTake(0, portMAX_DELAY))
+		if(xQueueReceive(states_queue, &program_state, portMAX_DELAY))
 		{
 			switch (get_program_state())
 			{
@@ -72,9 +78,10 @@ void main_task(void* data)
 					wifi_init();
 					break;
 				case WIFI_FAILED:
-					//TODO
+					//TODO turn wifi led on
 					break;
 				case MQTT_INIT:
+					//TODO turn wifi led off
 					mqtt_init();
 					break;
 				case BLE_INIT:
@@ -86,13 +93,16 @@ void main_task(void* data)
 					ble_close_connection();
 					break;
 				case ACTIVE:
-					xTaskNotifyGive(program_task_handle);
+					xEventGroupSetBits(program_event_group, ACTIVE_BIT);
 					break;
 				case WIFI_RECONNECT:
-					//TODO
+					xEventGroupClearBits(program_event_group, ACTIVE_BIT);
+					mqtt_stop();
+					//TODO turn wifi led on
 					break;
 				case WIFI_RECONNECTED:
-					//TODO
+					mqtt_reopen();
+					//TODO turn wifi led off
 					break;
 				case MQTT_REOPEN:
 					//TODO
@@ -127,22 +137,24 @@ static void program_task(void* data)
 {
 	while (true)
 	{
-		if (ulTaskNotifyTake(0, portMAX_DELAY))
+		if (xEventGroupWaitBits(program_event_group, ACTIVE_BIT, pdFALSE, pdTRUE, portMAX_DELAY))
 		{
-			int ble_value = ble_get_data();
-			int moisture = convert_value(ble_value);
-			ESP_LOGI(PROGRAM_TAG, "Value: %d Moisture: %d%%", ble_value, moisture);
-			mqtt_msg_t msg;
-			strcpy(msg.topic, "home/garden/rhododendrons/moisture");
-			sprintf(msg.payload, "%d", moisture);
-			add_mqtt_msg(msg);
-			vTaskDelay(21600000 / portTICK_PERIOD_MS);
-			if (get_program_state() == ACTIVE)
-			{
-				set_program_state(ACTIVE);
-			}
+			program_procedure();
+			//vTaskDelay(21600000 / portTICK_PERIOD_MS);
+			vTaskDelay(60000 / portTICK_PERIOD_MS);
 		}
 	}
+}
+
+static void program_procedure(void)
+{
+	int ble_value = ble_get_data();
+	int moisture = convert_value(ble_value);
+	ESP_LOGI(PROGRAM_TAG, "Value: %d Moisture: %d%%", ble_value, moisture);
+	mqtt_msg_t msg;
+	strcpy(msg.topic, "home/garden/rhododendrons/moisture");
+	sprintf(msg.payload, "%d", moisture);
+	add_mqtt_msg(msg);
 }
 
 static int convert_value(int value)

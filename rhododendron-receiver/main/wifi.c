@@ -10,7 +10,7 @@ static const char *TAG = "wifi station";
 static void event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data);
 
-#define ESP_MAXIMUM_RETRY  10
+#define ESP_MAXIMUM_RETRY  500
 
 static int s_retry_num = 0;
 
@@ -48,7 +48,12 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     } 
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
     {
-        if (get_program_state() != WIFI_INIT)
+        states_t state = get_program_state();
+        if (state == WIFI_INIT)
+        {
+            set_program_state(WIFI_FAILED);
+        }
+        else if (state != WIFI_FAILED && state != WIFI_RECONNECT)
         {
             set_program_state(WIFI_RECONNECT);
         }
@@ -58,10 +63,6 @@ static void event_handler(void* arg, esp_event_base_t event_base,
             s_retry_num++;
             ESP_LOGI(TAG, "retry to connect to the AP");
         } 
-        else 
-        {
-            set_program_state(WIFI_FAILED);
-        }
         ESP_LOGI(TAG,"connect to the AP fail");
     } 
     else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) 
