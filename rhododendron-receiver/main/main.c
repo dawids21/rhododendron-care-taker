@@ -19,8 +19,8 @@
 
 static states_t program_state;
 
-static const char* LED_TAG = "LED";
-static const char* PROGRAM_TAG = "PROGRAM";
+static const char *LED_TAG = "LED";
+static const char *PROGRAM_TAG = "PROGRAM";
 
 static TaskHandle_t main_task_handle;
 static TaskHandle_t program_task_handle;
@@ -28,15 +28,15 @@ static QueueHandle_t states_queue;
 static EventGroupHandle_t program_event_group;
 #define ACTIVE_BIT BIT0
 
-static void main_task(void* data);
-static void program_task(void* data);
+static void main_task(void *data);
+static void program_task(void *data);
 static void program_procedure(void);
 static int convert_value(int value);
-void led_task(void* data);
+void led_task(void *data);
 
 void set_program_state(states_t state)
 {
-	ESP_LOGI(PROGRAM_TAG, "Setting state: %d", state);	
+	ESP_LOGI(PROGRAM_TAG, "Setting state: %d", state);
 	xQueueSend(states_queue, &state, 5000 / portTICK_PERIOD_MS);
 }
 
@@ -47,15 +47,16 @@ states_t get_program_state(void)
 
 void app_main()
 {
-    //Initialize NVS
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-      ESP_ERROR_CHECK(nvs_flash_erase());
-      ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    program_state = PROGRAM_START;
+	//Initialize NVS
+	esp_err_t ret = nvs_flash_init();
+	if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+	{
+		ESP_ERROR_CHECK(nvs_flash_erase());
+		ret = nvs_flash_init();
+	}
+	ESP_ERROR_CHECK(ret);
+	ESP_ERROR_CHECK(esp_event_loop_create_default());
+	program_state = PROGRAM_START;
 	xTaskCreate(main_task, "MAIN task", 4096, NULL, 1, &main_task_handle);
 	states_queue = xQueueCreate(10, sizeof(states_t));
 	program_event_group = xEventGroupCreate();
@@ -64,55 +65,60 @@ void app_main()
 	//xTaskCreate(led_task, "LED task", 2048, NULL, 1, &led_task_handle);
 }
 
-void main_task(void* data)
+void main_task(void *data)
 {
 	while (true)
 	{
-		if(xQueueReceive(states_queue, &program_state, portMAX_DELAY))
+		if (xQueueReceive(states_queue, &program_state, portMAX_DELAY))
 		{
 			switch (get_program_state())
 			{
-				case PROGRAM_START:
-					break;
-				case WIFI_INIT:
-					wifi_init();
-					break;
-				case WIFI_FAILED:
-					//TODO turn wifi led on
-					break;
-				case MQTT_INIT:
-					//TODO turn wifi led off
-					mqtt_init();
-					break;
-				case BLE_INIT:
-					ble_init();
-					break;
-				case BLE_INITIATED:
-					vTaskDelay(1000 / portTICK_PERIOD_MS);
-					ESP_LOGI(PROGRAM_TAG, "Program active");
-					ble_close_connection();
-					break;
-				case ACTIVE:
-					xEventGroupSetBits(program_event_group, ACTIVE_BIT);
-					break;
-				case WIFI_RECONNECT:
-					xEventGroupClearBits(program_event_group, ACTIVE_BIT);
-					mqtt_stop();
-					//TODO turn wifi led on
-					break;
-				case WIFI_RECONNECTED:
-					mqtt_reopen();
-					//TODO turn wifi led off
-					break;
-				case MQTT_REOPEN:
-					//TODO
-					break;
+			case PROGRAM_START:
+				break;
+			case WIFI_INIT:
+				wifi_init();
+				break;
+			case WIFI_FAILED:
+				//TODO turn wifi led on
+				break;
+			case MQTT_INIT:
+				//TODO turn wifi led off
+				mqtt_init();
+				break;
+			case BLE_INIT:
+				ble_init();
+				break;
+			case BLE_INITIATED:
+				//TODO turn ble led off
+				vTaskDelay(1000 / portTICK_PERIOD_MS);
+				ESP_LOGI(PROGRAM_TAG, "Program active");
+				ble_close_connection();
+				break;
+			case ACTIVE:
+				xEventGroupSetBits(program_event_group, ACTIVE_BIT);
+				break;
+			case WIFI_RECONNECT:
+				xEventGroupClearBits(program_event_group, ACTIVE_BIT);
+				mqtt_stop();
+				//TODO turn wifi led on
+				break;
+			case WIFI_RECONNECTED:
+				mqtt_reopen();
+				//TODO turn wifi led off
+				break;
+			case MQTT_REOPEN:
+				//TODO
+				break;
+			case BLE_LOST:
+				xEventGroupClearBits(program_event_group, ACTIVE_BIT);
+				//TODO turn ble led on
+				break;
 			}
 		}
 	}
 }
 
-void led_task(void* data)
+void led_task(void *data)
 {
 	uint32_t notification_value = 0;
 	while (true)
@@ -133,7 +139,7 @@ void led_task(void* data)
 	}
 }
 
-static void program_task(void* data)
+static void program_task(void *data)
 {
 	while (true)
 	{
@@ -149,12 +155,15 @@ static void program_task(void* data)
 static void program_procedure(void)
 {
 	int ble_value = ble_get_data();
-	int moisture = convert_value(ble_value);
-	ESP_LOGI(PROGRAM_TAG, "Value: %d Moisture: %d%%", ble_value, moisture);
-	mqtt_msg_t msg;
-	strcpy(msg.topic, "home/garden/rhododendrons/moisture");
-	sprintf(msg.payload, "%d", moisture);
-	add_mqtt_msg(msg);
+	if (ble_value != -1)
+	{
+		int moisture = convert_value(ble_value);
+		ESP_LOGI(PROGRAM_TAG, "Value: %d Moisture: %d%%", ble_value, moisture);
+		mqtt_msg_t msg;
+		strcpy(msg.topic, "home/garden/rhododendrons/moisture");
+		sprintf(msg.payload, "%d", moisture);
+		add_mqtt_msg(msg);
+	}
 }
 
 static int convert_value(int value)
