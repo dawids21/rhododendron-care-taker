@@ -592,7 +592,6 @@ int ble_get_data(void)
         }
         else
         {
-            set_program_state(BLE_LOST);
             return -1;
         }
     }

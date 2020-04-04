@@ -14,9 +14,7 @@ typedef enum states
 	BLE_INITIATED,
 	ACTIVE,
 	WIFI_RECONNECT,
-	WIFI_RECONNECTED,
-	MQTT_REOPEN,
-	BLE_LOST
+	WIFI_RECONNECTED
 } states_t;
 
 void set_program_state(states_t state);
