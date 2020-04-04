@@ -1,2 +1,4 @@
-rhododendron-receiver/.vscode/
-rhododendron-receiver/build/
+example_code/
+.vscode
+*/build
+rhododendron-receiver/main/include/secrets.h
