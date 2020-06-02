@@ -101,8 +101,8 @@ void main_task(void *data)
 				//after 30 sec
 				xTimerStart(ble_failed_timer, 2000 / portTICK_PERIOD_MS);
 				ble_init();
-				//xTimerStop(ble_failed_timer, 2000 / portTICK_PERIOD_MS);
-				//xTimerDelete(ble_failed_timer, 2000 / portTICK_PERIOD_MS);
+				xTimerStop(ble_failed_timer, 2000 / portTICK_PERIOD_MS);
+				xTimerDelete(ble_failed_timer, 2000 / portTICK_PERIOD_MS);
 				break;
 			case BLE_INITIATED:
 				vTaskDelay(1000 / portTICK_PERIOD_MS);
@@ -133,8 +133,7 @@ static void program_task(void *data)
 		if (xEventGroupWaitBits(program_event_group, ACTIVE_BIT, pdFALSE, pdTRUE, portMAX_DELAY))
 		{
 			program_procedure();
-			//vTaskDelay(21600000 / portTICK_PERIOD_MS);
-			vTaskDelay(60000 / portTICK_PERIOD_MS);
+			vTaskDelay(21600000 / portTICK_PERIOD_MS);
 		}
 	}
 }
@@ -180,5 +179,5 @@ static void ble_timer_callback(TimerHandle_t timer)
 {
 	ESP_LOGI("BLE", "BLE failed");
 	gpio_set_level(BLE_LED, 1);
-	//xTimerStop(ble_failed_timer, 2000 / portTICK_PERIOD_MS);
+	xTimerStop(ble_failed_timer, 2000 / portTICK_PERIOD_MS);
 }

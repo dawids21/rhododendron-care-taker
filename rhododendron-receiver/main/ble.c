@@ -360,7 +360,7 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
         }
         if (count > 0)
         {
-            char_elem_result = (esp_gattc_char_elem_t *)malloc(sizeof(esp_gattc_char_elem_t) * count);
+            char_elem_result = malloc(sizeof(esp_gattc_char_elem_t) * count);
             if (!char_elem_result)
             {
                 ESP_LOGE(GATTC_TAG, "gattc no mem");
@@ -597,6 +597,7 @@ int ble_get_data(void)
     }
     retry_connection = 0;
     ESP_LOGI(GATTC_TAG, "Connected");
+    esp_ble_gattc_register_for_notify(gattc_profile.gattc_if, gattc_profile.remote_bda, char_elem_result[0].char_handle);
     static uint8_t msg[] = "AT+ADC4?";
     esp_ble_gattc_write_char(gattc_profile.gattc_if, gattc_profile.conn_id, char_elem_result[0].char_handle, 8, msg, ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_NONE);
     xEventGroupWaitBits(data_event_group, WRITE_BIT | READ_BIT, pdTRUE, pdTRUE, portMAX_DELAY);
