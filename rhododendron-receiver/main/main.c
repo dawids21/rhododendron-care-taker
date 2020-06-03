@@ -37,8 +37,8 @@ static int convert_value(int value);
 static esp_err_t user_gpio_config();
 static void ble_timer_callback(TimerHandle_t timer);
 
-#define WIFI_LED GPIO_NUM_21
-#define BLE_LED GPIO_NUM_23
+#define WIFI_LED GPIO_NUM_27
+#define BLE_LED GPIO_NUM_2
 
 void set_program_state(states_t state)
 {
@@ -133,7 +133,8 @@ static void program_task(void *data)
 		if (xEventGroupWaitBits(program_event_group, ACTIVE_BIT, pdFALSE, pdTRUE, portMAX_DELAY))
 		{
 			program_procedure();
-			vTaskDelay(21600000 / portTICK_PERIOD_MS);
+			// vTaskDelay(21600000 / portTICK_PERIOD_MS);
+			vTaskDelay(60000 / portTICK_PERIOD_MS);
 		}
 	}
 }
